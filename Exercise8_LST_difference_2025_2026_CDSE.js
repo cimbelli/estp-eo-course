@@ -24,6 +24,10 @@ var LAST_MONTH = 8;    // August
 var RANGE = 10;        // colour scale: from -RANGE (blue) to +RANGE (red), degrees C
 var NDVI_SOIL = 0.2;   // below: bare soil, roofs, roads
 var NDVI_VEG = 0.5;    // above: full vegetation
+var CLOUD_MASK = false; // true: skip passes flagged as cloud in BQA.
+                        // Off by default: bright roofs are often flagged as
+                        // cloud, and clouds are cold, so they never win the maximum.
+var SHOW_PASSES = false; // true: show how many passes were used for each pixel (check)
 // -----------------------------------------------------------------
 
 var E_WATER = 0.991, E_SOIL = 0.966, E_VEG = 0.973, C = 0.009;
@@ -65,22 +69,32 @@ function emissivity(ndvi) {
   return E_VEG * pv + E_SOIL * (1 - pv) + C;
 }
 
-// Blue = cooler in YEAR_B, white = no change, red = hotter in YEAR_B
+// Blue = cooler in YEAR_B, white = no change, dark brick red = hotter in YEAR_B
 var viz = new ColorRampVisualizer([
   [-RANGE, 0x2166ac], [-RANGE / 2, 0x92c5de], [0, 0xf7f7f7],
-  [RANGE / 2, 0xf4a582], [RANGE, 0xb2182b]
+  [RANGE / 2, 0xf4a582], [RANGE, 0x7f2704]
 ]);
 
+// Check mode: number of passes used, 0 (black) to 20 (white)
+var vizPasses = new ColorRampVisualizer([[0, 0x000000], [20, 0xffffff]]);
+function passesOutput(n) {
+  var g = vizPasses.process(n);
+  return { default: [g[0], g[1], g[2], 1], index: [n], eobrowserStats: [n], dataMask: [1] };
+}
+
 function evaluatePixel(samples, scenes) {
-  var maxA = -999, maxB = -999;
+  var maxA = -999, maxB = -999, nPasses = 0;
 
   for (var i = 0; i < samples.length; i++) {
     var s = samples[i];
     if (!s.dataMask || s.B10 < 173) continue;
 
-    // Clouds out
-    var qa = decodeL8C2Qa(s.BQA);
-    if (qa.cloud || qa.dilatedCloud || qa.cirrus || qa.cloudShadow) continue;
+    // Clouds: optional mask from BQA (see SETTINGS)
+    if (CLOUD_MASK) {
+      var qa = decodeL8C2Qa(s.BQA);
+      if (qa.cloud || qa.cirrus || qa.cloudShadow) continue;
+    }
+    nPasses++;
 
     // Surface temperature, degrees C
     var ndvi = (s.B05 - s.B04) / (s.B05 + s.B04);
@@ -93,7 +107,9 @@ function evaluatePixel(samples, scenes) {
     if (year === YEAR_B && lst > maxB) maxB = lst;
   }
 
-  // A clear value is needed in both summers
+  if (SHOW_PASSES) return passesOutput(nPasses);
+
+  // A value is needed in both summers
   if (maxA === -999 || maxB === -999) {
     return { default: [0, 0, 0, 0], index: [NaN], eobrowserStats: [NaN], dataMask: [0] };
   }

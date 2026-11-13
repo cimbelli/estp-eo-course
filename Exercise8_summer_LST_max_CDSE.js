@@ -12,15 +12,19 @@
 // Based on "Land Surface Temperature (LST) Mapping" and
 // "Land Surface Temperature Comparison" by Mohor Gartner,
 // Sentinel Hub custom scripts (custom-scripts.sentinel-hub.com), CC BY-SA 4.0.
-// Changes: cloud mask from the BQA band, Planck correction in Kelvin,
+// Changes: optional cloud mask from the BQA band, Planck correction in Kelvin,
 // float output to read and download the values in degrees C.
 // ================================================================
 
 // ---- SETTINGS: change only these lines -------------------------
-var MIN_C = 25;        // colour scale: blue at or below this value (degrees C)
-var MAX_C = 55;        // colour scale: dark red at or above this value
+var MIN_C = 30;        // colour scale: pale at or below this value (degrees C)
+var MAX_C = 50;        // colour scale: dark brick red at or above this value
 var NDVI_SOIL = 0.2;   // below: bare soil, roofs, roads
 var NDVI_VEG = 0.5;    // above: full vegetation
+var CLOUD_MASK = false; // true: skip passes flagged as cloud in BQA.
+                        // Off by default: bright roofs are often flagged as
+                        // cloud, and clouds are cold, so they never win the maximum.
+var SHOW_PASSES = false; // true: show how many passes were used for each pixel (check)
 // -----------------------------------------------------------------
 
 // Emissivity of the main surfaces
@@ -54,25 +58,35 @@ function emissivity(ndvi) {
   return E_VEG * pv + E_SOIL * (1 - pv) + C;
 }
 
-// Colour ramp, blue (cool) to dark red (hot)
+// Colour ramp: pale (cool) to dark brick red (hot)
 var step = (MAX_C - MIN_C) / 6;
 var viz = new ColorRampVisualizer([
-  [MIN_C, 0x313695], [MIN_C + step, 0x4575b4], [MIN_C + 2 * step, 0x74add1],
-  [MIN_C + 3 * step, 0xffffbf], [MIN_C + 4 * step, 0xfdae61],
-  [MIN_C + 5 * step, 0xf46d43], [MAX_C, 0xa50026]
+  [MIN_C, 0xfff5eb], [MIN_C + step, 0xfdd0a2], [MIN_C + 2 * step, 0xfdae6b],
+  [MIN_C + 3 * step, 0xf16913], [MIN_C + 4 * step, 0xd94801],
+  [MIN_C + 5 * step, 0xa63603], [MAX_C, 0x7f2704]
 ]);
 
+// Check mode: number of passes used, 0 (black) to 20 (white)
+var vizPasses = new ColorRampVisualizer([[0, 0x000000], [20, 0xffffff]]);
+function passesOutput(n) {
+  var g = vizPasses.process(n);
+  return { default: [g[0], g[1], g[2], 1], index: [n], eobrowserStats: [n], dataMask: [1] };
+}
+
 function evaluatePixel(samples) {
-  var lstMax = -999;
+  var lstMax = -999, nPasses = 0;
 
   // 2. Loop over every Landsat pass in the time range
   for (var i = 0; i < samples.length; i++) {
     var s = samples[i];
     if (!s.dataMask || s.B10 < 173) continue;
 
-    // 3. Clouds out: BQA flags clouds, cirrus and shadows
-    var qa = decodeL8C2Qa(s.BQA);
-    if (qa.cloud || qa.dilatedCloud || qa.cirrus || qa.cloudShadow) continue;
+    // 3. Clouds: optional mask from BQA (see SETTINGS)
+    if (CLOUD_MASK) {
+      var qa = decodeL8C2Qa(s.BQA);
+      if (qa.cloud || qa.cirrus || qa.cloudShadow) continue;
+    }
+    nPasses++;
 
     // 4. Brightness temperature (Kelvin) to surface temperature (degrees C)
     var ndvi = (s.B05 - s.B04) / (s.B05 + s.B04);
@@ -82,6 +96,8 @@ function evaluatePixel(samples) {
     // 5. Keep the hottest value of the period
     if (lst > lstMax) lstMax = lst;
   }
+
+  if (SHOW_PASSES) return passesOutput(nPasses);
 
   if (lstMax === -999) {
     return { default: [0, 0, 0, 0], index: [NaN], eobrowserStats: [NaN], dataMask: [0] };
