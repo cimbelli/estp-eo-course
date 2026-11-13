@@ -21,7 +21,10 @@ var YEAR_A = 2025;     // first summer
 var YEAR_B = 2026;     // second summer: the map shows B minus A
 var FIRST_MONTH = 6;   // June
 var LAST_MONTH = 8;    // August
-var RANGE = 10;        // colour scale: from -RANGE (blue) to +RANGE (red), degrees C
+var RANGE = 8;         // colour scale: from -RANGE (blue) to +RANGE (dark brick red), degrees C
+var STRETCH = 1.5;     // 1 = linear; >1 = more colours for small differences
+                       // Tip: click a few places, then set RANGE to the largest
+                       // difference you read.
 var NDVI_SOIL = 0.2;   // below: bare soil, roofs, roads
 var NDVI_VEG = 0.5;    // above: full vegetation
 var CLOUD_MASK = false; // true: skip passes flagged as cloud in BQA.
@@ -70,10 +73,18 @@ function emissivity(ndvi) {
 }
 
 // Blue = cooler in YEAR_B, white = no change, dark brick red = hotter in YEAR_B
-var viz = new ColorRampVisualizer([
-  [-RANGE, 0x2166ac], [-RANGE / 2, 0x92c5de], [0, 0xf7f7f7],
-  [RANGE / 2, 0xf4a582], [RANGE, 0x7f2704]
-]);
+// Stretched: more colours for small differences
+var NEG = [0x2166ac, 0x67a9cf, 0xd1e5f0];   // strong to weak cooling
+var POS = [0xfddbc7, 0xef8a62, 0x7f2704];   // weak to strong warming
+var ramp = [];
+for (var k = 0; k < 3; k++) {
+  ramp.push([-RANGE * Math.pow((3 - k) / 3, STRETCH), NEG[k]]);
+}
+ramp.push([0, 0xf7f7f7]);
+for (var k = 0; k < 3; k++) {
+  ramp.push([RANGE * Math.pow((k + 1) / 3, STRETCH), POS[k]]);
+}
+var viz = new ColorRampVisualizer(ramp);
 
 // Check mode: number of passes used, 0 (black) to 20 (white)
 var vizPasses = new ColorRampVisualizer([[0, 0x000000], [20, 0xffffff]]);
