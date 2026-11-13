@@ -17,8 +17,11 @@
 // ================================================================
 
 // ---- SETTINGS: change only these lines -------------------------
-var MIN_C = 30;        // colour scale: pale at or below this value (degrees C)
-var MAX_C = 50;        // colour scale: dark brick red at or above this value
+var MIN_C = 20;        // colour scale: pale at or below this value (degrees C)
+var MAX_C = 45;        // colour scale: dark brick red at or above this value
+var STRETCH = 1.5;     // 1 = linear; >1 = more colours for the lower values
+                       // Tip: click a few places, then set MIN_C and MAX_C
+                       // to the lowest and highest values you read.
 var NDVI_SOIL = 0.2;   // below: bare soil, roofs, roads
 var NDVI_VEG = 0.5;    // above: full vegetation
 var CLOUD_MASK = false; // true: skip passes flagged as cloud in BQA.
@@ -58,13 +61,14 @@ function emissivity(ndvi) {
   return E_VEG * pv + E_SOIL * (1 - pv) + C;
 }
 
-// Colour ramp: pale (cool) to dark brick red (hot)
-var step = (MAX_C - MIN_C) / 6;
-var viz = new ColorRampVisualizer([
-  [MIN_C, 0xfff5eb], [MIN_C + step, 0xfdd0a2], [MIN_C + 2 * step, 0xfdae6b],
-  [MIN_C + 3 * step, 0xf16913], [MIN_C + 4 * step, 0xd94801],
-  [MIN_C + 5 * step, 0xa63603], [MAX_C, 0x7f2704]
-]);
+// Colour ramp: pale (cool) to dark brick red (hot), stretched
+var COLOURS = [0xfff5eb, 0xfdd0a2, 0xfdae6b, 0xf16913, 0xd94801, 0xa63603, 0x7f2704];
+var ramp = [];
+for (var k = 0; k < COLOURS.length; k++) {
+  var t = k / (COLOURS.length - 1);
+  ramp.push([MIN_C + (MAX_C - MIN_C) * Math.pow(t, STRETCH), COLOURS[k]]);
+}
+var viz = new ColorRampVisualizer(ramp);
 
 // Check mode: number of passes used, 0 (black) to 20 (white)
 var vizPasses = new ColorRampVisualizer([[0, 0x000000], [20, 0xffffff]]);
