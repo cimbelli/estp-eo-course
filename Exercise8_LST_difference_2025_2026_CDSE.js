@@ -7,9 +7,10 @@
 // Session 18 (Day 3)
 // ================================================================
 // Copernicus Browser: collection Landsat 8-9 L1, TIME RANGE that covers
-// both summers (e.g. 2025-06-01 to 2026-08-31), Custom script > paste the
+// both dates or summers (e.g. 2024-08-10 to 2026-08-08), Custom script > paste the
 // WHOLE script > Apply. Change only the SETTINGS block.
-// Only the passes of the summer months are used; the others are skipped.
+// TWO_DATES = true: only the two days DATE_A and DATE_B are used (fast).
+// TWO_DATES = false: every pass of the summer months of YEAR_A and YEAR_B.
 //
 // Based on "Land Surface Temperature (LST) Mapping" and
 // "Land Surface Temperature Comparison" by Mohor Gartner,
@@ -17,8 +18,11 @@
 // ================================================================
 
 // ---- SETTINGS: change only these lines -------------------------
-var YEAR_A = 2025;     // first summer
+var YEAR_A = 2024;     // first summer
 var YEAR_B = 2026;     // second summer: the map shows B minus A
+var TWO_DATES = true;  // true: compare only two clear days (below), much faster
+var DATE_A = "2024-08-10";   // a clear day in YEAR_A
+var DATE_B = "2026-08-08";   // a clear day in YEAR_B
 var FIRST_MONTH = 6;   // June
 var LAST_MONTH = 8;    // August
 var RANGE = 8;         // colour scale: from -RANGE (blue) to +RANGE (dark brick red), degrees C
@@ -52,16 +56,31 @@ function setup() {
 
 // Keep only the passes of the summer months of the two years
 function inSummer(dateString) {
+  if (TWO_DATES) {
+    var day = String(dateString).substring(0, 10);
+    return day === DATE_A || day === DATE_B;
+  }
   var d = new Date(dateString);
   var y = d.getUTCFullYear(), m = d.getUTCMonth() + 1;
   return (y === YEAR_A || y === YEAR_B) && m >= FIRST_MONTH && m <= LAST_MONTH;
 }
 
+var DATES = [];   // dates of the passes kept, in the same order as the samples
+
 function preProcessScenes(collections) {
   collections.scenes.orbits = collections.scenes.orbits.filter(function (o) {
     return inSummer(o.dateFrom);
   });
+  DATES = collections.scenes.orbits.map(function (o) { return o.dateFrom; });
   return collections;
+}
+
+// Year of pass i: from the scenes argument, whatever its shape, or from DATES
+function yearOf(scenes, i) {
+  var sc = null;
+  if (scenes) sc = scenes.orbits ? scenes.orbits[i] : scenes[i];
+  var d = sc ? (sc.date || sc.dateFrom) : DATES[i];
+  return new Date(d).getUTCFullYear();
 }
 
 function emissivity(ndvi) {
@@ -113,7 +132,7 @@ function evaluatePixel(samples, scenes) {
     var lst = bt / (1 + (LAMBDA * bt / RHO) * Math.log(emissivity(ndvi))) - 273.15;
 
     // Hottest value of each summer
-    var year = new Date(scenes[i].date).getUTCFullYear();
+    var year = yearOf(scenes, i);
     if (year === YEAR_A && lst > maxA) maxA = lst;
     if (year === YEAR_B && lst > maxB) maxB = lst;
   }
